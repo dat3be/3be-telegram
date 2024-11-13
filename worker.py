@@ -7,6 +7,9 @@ import sys
 import threading
 import traceback
 import uuid
+import time
+import urllib.parse
+
 from html import escape
 from typing import *
 
@@ -257,7 +260,7 @@ class Worker(threading.Thread):
     def __wait_for_specific_message(self,
                                     items: List[str],
                                     cancellable: bool = False) -> Union[str, CancelSignal]:
-        """Continue getting updates until until one of the strings contained in the list is received as a message."""
+        """Continue getting updates until one of the strings contained in the list is received as a message."""
         log.debug("Waiting for a specific message...")
         while True:
             # Get the next update
@@ -746,36 +749,255 @@ class Worker(threading.Thread):
         """Add more credit to the account."""
         log.debug("Displaying __add_credit_menu")
         # Create a payment methods keyboard
-        keyboard = list()
+        keyboard = []
         # Add the supported payment methods to the keyboard
         # Cash
         if self.cfg["Payments"]["Cash"]["enable_pay_with_cash"]:
             keyboard.append([telegram.KeyboardButton(self.loc.get("menu_cash"))])
+
+        # Vietnamese Payments
+        if self.cfg["Payments"]["VietQR"]["enable_pay_with_vietqr"]:
+            keyboard.append([telegram.KeyboardButton(self.loc.get("menu_vietqr"))])
+
         # Telegram Payments
         if self.cfg["Payments"]["CreditCard"]["credit_card_token"] != "":
             keyboard.append([telegram.KeyboardButton(self.loc.get("menu_credit_card"))])
+
         # Keyboard: go back to the previous menu
         keyboard.append([telegram.KeyboardButton(self.loc.get("menu_cancel"))])
+
         # Send the keyboard to the user
-        self.bot.send_message(self.chat.id, self.loc.get("conversation_payment_method"),
-                              reply_markup=telegram.ReplyKeyboardMarkup(keyboard, one_time_keyboard=True))
+        self.bot.send_message(
+            self.chat.id,
+            self.loc.get("conversation_payment_method"),
+            reply_markup=telegram.ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
+        )
+
         # Wait for a reply from the user
         selection = self.__wait_for_specific_message(
-            [self.loc.get("menu_cash"), self.loc.get("menu_credit_card"), self.loc.get("menu_cancel")],
-            cancellable=True)
+            [
+                self.loc.get("menu_cash"),
+                self.loc.get("menu_vietqr"),
+                self.loc.get("menu_credit_card"),
+                self.loc.get("menu_cancel")
+            ],
+            cancellable=True
+        )
+
         # If the user has selected the Cash option...
         if selection == self.loc.get("menu_cash") and self.cfg["Payments"]["Cash"]["enable_pay_with_cash"]:
             # Go to the pay with cash function
-            self.bot.send_message(self.chat.id,
-                                  self.loc.get("payment_cash", user_cash_id=self.user.identifiable_str()))
+            self.bot.send_message(
+                self.chat.id,
+                self.loc.get("payment_cash", user_cash_id=self.user.identifiable_str())
+            )
+
+        # If the user has selected the VietQR option...
+        elif selection == self.loc.get("menu_vietqr") and self.cfg["Payments"]["VietQR"]["enable_pay_with_vietqr"]:
+            # Go to the pay with VietQR function
+            self.__add_credit_vietqr()
+
         # If the user has selected the Credit Card option...
         elif selection == self.loc.get("menu_credit_card") and self.cfg["Payments"]["CreditCard"]["credit_card_token"]:
             # Go to the pay with credit card function
             self.__add_credit_cc()
+
         # If the user has selected the Cancel option...
         elif isinstance(selection, CancelSignal):
             # Send him back to the previous menu
             return
+
+    import threading
+    import time
+
+    def __add_credit_vietqr(self):
+        """Generate a VietQR code for a predefined amount."""
+        log.debug("Displaying __add_credit_vietqr")
+
+        # Get presets and conversion rate from config
+        presets = self.cfg["Payments"]["VietQR"].get("payment_presets", [])
+        usd_to_vnd_rate = self.cfg["Payments"]["VietQR"].get("usd_to_vnd_rate", 25000)
+
+        if not presets or usd_to_vnd_rate <= 0:
+            self.bot.send_message(self.chat.id, self.loc.get("error_vietqr_config"))
+            return
+
+        # Generate the keyboard with converted amounts
+        keyboard = [
+            [telegram.KeyboardButton(f"{preset} USD ({preset * usd_to_vnd_rate:,} VND)")]
+            for preset in presets
+        ]
+        keyboard.append([telegram.KeyboardButton(self.loc.get("menu_cancel"))])
+
+        cancelled = False
+        while not cancelled:
+            # Display the amount selection menu
+            self.bot.send_message(
+                self.chat.id,
+                self.loc.get("payment_vietqr_amount"),
+                reply_markup=telegram.ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
+            )
+
+            # Wait for user selection
+            selection = self.__wait_for_regex(r"([0-9]+(?:[.,][0-9]+)?)", cancellable=True)
+
+            if isinstance(selection, CancelSignal):
+                # Exit the loop if cancelled
+                cancelled = True
+                continue
+
+            # Validate the amount
+            try:
+                value_usd = float(selection.split()[0])
+                value_vnd = int(value_usd * usd_to_vnd_rate)
+            except (ValueError, IndexError):
+                self.bot.send_message(self.chat.id, self.loc.get("error_invalid_amount"))
+                continue
+
+            # Ensure the selected amount is valid
+            if value_vnd > self.cfg["Payments"]["VietQR"]["max_amount"]:
+                self.bot.send_message(
+                    self.chat.id,
+                    self.loc.get(
+                        "error_payment_amount_over_max",
+                        max_amount=f"{self.cfg['Payments']['VietQR']['max_amount']:,} VND"
+                    )
+                )
+                continue
+            elif value_vnd < self.cfg["Payments"]["VietQR"]["min_amount"]:
+                self.bot.send_message(
+                    self.chat.id,
+                    self.loc.get(
+                        "error_payment_amount_under_min",
+                        min_amount=f"{self.cfg['Payments']['VietQR']['min_amount']:,} VND"
+                    )
+                )
+                continue
+            break
+
+        # If the user cancelled the action...
+        if cancelled:
+            return
+
+        # Create a new transaction in the database
+        transaction = db.Transaction(
+            user_id=self.user.user_id,
+            value=value_vnd,
+            provider="VietQR",
+            notes="Generated through VietQR",
+            refunded=False
+        )
+        self.session.add(transaction)
+        self.session.commit()
+
+        # Generate VietQR content and image
+        try:
+            qr_content = self.__generate_vietqr_content(value_vnd, transaction.transaction_id)
+            qr_path = self.__generate_vietqr_image(qr_content)
+        except ValueError as e:
+            log.error(f"Failed to generate VietQR: {e}")
+            self.bot.send_message(self.chat.id, self.loc.get("error_vietqr_generation_failed"))
+            # Roll back the transaction if QR generation fails
+            self.session.delete(transaction)
+            self.session.commit()
+            return
+
+        # Send the QR code to the user
+        with open(qr_path, "rb") as qr_file:
+            self.bot.send_photo(
+                self.chat.id,
+                qr_file,
+                caption=self.loc.get(
+                    "vietqr_payment_caption",
+                    value=f"{value_usd:.2f} USD",
+                    value_vnd=f"{value_vnd:,} VND"
+                )
+            )
+
+        # Notify the user of the timeout window
+        self.bot.send_message(
+            self.chat.id,
+            self.loc.get("vietqr_payment_timeout_warning", transaction_id=transaction.transaction_id)
+        )
+
+        # Delete the QR file after sending it
+        os.remove(qr_path)
+
+        # Start the timeout thread to wait for payment
+        def timeout_transaction():
+            time.sleep(600)  # 10 minutes
+            transaction = self.session.query(db.Transaction).filter_by(
+                transaction_id=transaction.transaction_id,
+                refunded=False
+            ).first()
+            if transaction:
+                # If the transaction still exists and is not completed, cancel it
+                log.info(f"Transaction {transaction.transaction_id} timed out, canceling...")
+                self.session.delete(transaction)
+                self.session.commit()
+                self.bot.send_message(
+                    self.chat.id,
+                    self.loc.get("vietqr_payment_timeout", transaction_id=transaction.transaction_id)
+                )
+
+        threading.Thread(target=timeout_transaction, daemon=True).start()
+
+        log.info(f"Generated VietQR for transaction {transaction.transaction_id}")
+
+    def __wait_for_payment_confirmation(self, transaction):
+        """Wait for payment confirmation for a specific transaction."""
+        # Example implementation: webhook or manual confirmation process
+        log.info(f"Waiting for payment confirmation for transaction ID {transaction.transaction_id}")
+        # Add your webhook or polling logic here
+        pass
+
+    def __generate_vietqr_content(self, amount_vnd, transaction_id):
+        """Generate the VietQR content URL with a custom description."""
+        config = self.cfg["Payments"]["VietQR"]
+
+        # Validate required configuration fields
+        required_keys = ["bank_code", "account_number", "account_name"]
+        missing_keys = [key for key in required_keys if key not in config]
+        if missing_keys:
+            raise KeyError(f"Missing required VietQR configuration keys: {', '.join(missing_keys)}")
+
+        if amount_vnd <= 0:
+            raise ValueError("Invalid amount for VietQR payment: Amount must be greater than 0")
+
+        # Format the custom description
+        custom_description = f"3BE chuc mung {transaction_id}"
+        add_info = urllib.parse.quote(custom_description)
+
+        # URL encode account name
+        account_name = urllib.parse.quote(config["account_name"])
+
+        # Construct the URL
+        qr_url = (
+            f"https://img.vietqr.io/image/{config['bank_code']}-{config['account_number']}-compact.png"
+            f"?accountName={account_name}"
+            f"&amount={amount_vnd}"
+            f"&addInfo={add_info}"
+        )
+
+        log.debug(f"Generated VietQR URL with transaction ID {transaction_id}: {qr_url}")
+        return qr_url
+
+    def __generate_vietqr_image(self, qr_content):
+        """Fetch and save the QR code image from the generated VietQR URL."""
+        try:
+            log.debug(f"Fetching VietQR image from: {qr_content}")
+            response = requests.get(qr_content, stream=True)
+            response.raise_for_status()
+
+            qr_path = f"vietqr_{uuid.uuid4().hex}.png"
+            with open(qr_path, "wb") as qr_file:
+                for chunk in response.iter_content(1024):
+                    qr_file.write(chunk)
+
+            return qr_path
+        except requests.RequestException as e:
+            log.error(f"Failed to fetch VietQR image: {e} | Status Code: {getattr(e.response, 'status_code', 'N/A')}")
+            raise ValueError("Failed to generate VietQR image")
 
     def __add_credit_cc(self):
         """Add money to the wallet through a credit card payment."""
@@ -1480,10 +1702,10 @@ class Worker(threading.Thread):
             lang = "🇺🇦 Українська"
             keyboard.append([telegram.KeyboardButton(lang)])
             options[lang] = "uk"
-        if "vn" in self.cfg["Language"]["enabled_languages"]:
+        if "vi" in self.cfg["Language"]["enabled_languages"]:
             lang = "🇻🇳 Vietnamese"
             keyboard.append([telegram.KeyboardButton(lang)])
-            options[lang] = "vn"
+            options[lang] = "vi"
         if "zh_cn" in self.cfg["Language"]["enabled_languages"]:
             lang = "🇨🇳 简体中文"
             keyboard.append([telegram.KeyboardButton(lang)])
@@ -1504,10 +1726,6 @@ class Worker(threading.Thread):
             lang = "🇮🇳 हिन्दी"
             keyboard.append([telegram.KeyboardButton(lang)])
             options[lang] = "hi"
-        if "vi" in self.cfg["Language"]["enabled_languages"]:
-            lang = "🇻🇳 Vietnamese"
-            keyboard.append([telegram.KeyboardButton(lang)])
-            options[lang] = "vi"
         # Send the previously created keyboard to the user (ensuring it can be clicked only 1 time)
         self.bot.send_message(self.chat.id,
                               self.loc.get("conversation_language_select"),

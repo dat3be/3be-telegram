@@ -144,6 +144,9 @@ menu_bot_info = "ℹ️ Bot info"
 # User menu: cash
 menu_cash = "💵 With cash"
 
+# User menu: vietqr
+menu_vietqr = "💳 With VietQR"
+
 # User menu: credit card
 menu_credit_card = "💳 By credit card"
 
@@ -315,6 +318,13 @@ payment_cash = "You can pay in cash at the physical location of the store.\n" \
                "Pay at checkout, and give this id to the manager:\n" \
                "<b>{user_cash_id}</b>"
 
+# Prompt to enter the amount for VietQR payment
+payment_vietqr_amount = "Select the amount to pay via VietQR:"
+vietqr_payment_caption = "Scan this QR code to pay {value} USD ({value_vnd})."
+vietqr_payment_timeout_warning = "You have 10 minutes to complete the payment for transaction {transaction_id}. If not paid within this time, the transaction will be canceled."
+vietqr_payment_timeout = "Your payment session for transaction {transaction_id} has timed out. Please try again."
+error_vietqr_generation_failed = "Failed to generate the VietQR code. Please try again."
+
 # Payment: invoice amount
 payment_cc_amount = "How many funds do you want to add to your wallet?\n" \
                     "\n" \
@@ -354,6 +364,18 @@ notification_transaction_created = "ℹ️  A new transaction has been applied t
 # Refund reason
 refund_reason = "Refund reason:\n" \
                 "{reason}"
+
+emoji_completed = "✅"  # Emoji for completed actions
+text_completed = "Your order has been completed."  # Text for completed actions
+conversation_cart_actions = "What would you like to do with your cart?"  # Prompt for cart actions
+emoji_not_processed = "❌"  # Emoji for unprocessed actions
+text_not_processed = "This order has not been processed yet."  # Text for unprocessed actions
+ask_refund_reason = "Please provide a reason for the refund:"  # Prompt for refund reason
+emoji_refunded = "💵"  # Emoji to indicate refunded status
+text_refunded = "This order has been refunded."  # Text for refunded status
+refund_reason = "Refund Reason: {reason}"  # Display refund reason
+success_order_refunded = "The order has been successfully refunded."  # Success message for refund
+
 
 # Info: informazioni sul bot
 bot_info = 'This bot is using <a href="https://github.com/Steffo99/greed">3be-telegram</a>,' \

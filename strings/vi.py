@@ -124,6 +124,7 @@ menu_done = "✅️ Xong"
 menu_pay = "💳 Thanh toán"
 menu_cash = "💵 Tiền mặt"
 menu_credit_card = "💳 Thẻ tín dụng"
+menu_vietqr = "💳 VietQR"
 menu_edit_credit = "💰 Sửa số dư"
 menu_user_mode = "👤 Chuyển sang chế độ khách hàng"
 menu_csv = "📄 Xuất file .csv"
@@ -137,6 +138,13 @@ contact_shopkeeper = "Hiện tại, đội ngũ hỗ trợ khách hàng bao gồ
 
 # Chọn ngôn ngữ
 conversation_language_select = "Chọn một ngôn ngữ:"
+
+# Prompt to enter the amount for VietQR payment
+payment_vietqr_amount = "Chọn số tiền để thanh toán qua VietQR:"
+vietqr_payment_caption = "Quét mã QR này để thanh toán {value} USD ({value_vnd})."
+vietqr_payment_timeout = "Phiên thanh toán của bạn với mã giao dịch {transaction_id} đã hết hạn. Vui lòng thử lại."
+vietqr_payment_timeout_warning = "Bạn có 10 phút để hoàn tất thanh toán với mã giao dịch {transaction_id}. Nếu không thanh toán trong thời gian này, giao dịch sẽ bị hủy."
+error_vietqr_generation_failed = "Không thể tạo mã VietQR. Vui lòng thử lại."
 
 # Thanh toán: số tiền thẻ tín dụng
 payment_cc_amount = "Bạn muốn thêm bao nhiêu tiền vào ví của mình?\n" \
@@ -213,6 +221,18 @@ notification_order_completed = "Đơn hàng của bạn đã được hoàn thà
                                "{order}"
 notification_order_refunded = "Đơn hàng của bạn đã được hoàn tiền!\n" \
                               "{order}"
+
+emoji_completed = "✅"  # Biểu tượng cho trạng thái đã hoàn thành
+text_completed = "Đơn hàng của bạn đã được hoàn tất."  # Văn bản cho trạng thái đã hoàn thành
+conversation_cart_actions = "Bạn muốn làm gì với giỏ hàng của mình?"  # Câu hỏi cho hành động giỏ hàng
+emoji_not_processed = "❌"  # Biểu tượng cho trạng thái chưa xử lý
+text_not_processed = "Đơn hàng này vẫn chưa được xử lý."  # Văn bản cho trạng thái chưa xử lý
+ask_refund_reason = "Vui lòng cung cấp lý do hoàn tiền:"  # Yêu cầu lý do hoàn tiền
+emoji_refunded = "💵"  # Biểu tượng cho trạng thái đã hoàn tiền
+text_refunded = "Đơn hàng này đã được hoàn tiền."  # Văn bản cho trạng thái đã hoàn tiền
+refund_reason = "Lý do hoàn tiền: {reason}"  # Hiển thị lý do hoàn tiền
+success_order_refunded = "Đơn hàng đã được hoàn tiền thành công."  # Thông báo thành công khi hoàn tiền
+
 
 # Chuỗi liên quan đến thanh toán
 payment_invoice_label = "Thanh toán"

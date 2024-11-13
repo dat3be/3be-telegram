@@ -17,3 +17,5 @@ six==1.16.0
 tornado==6.3.3
 tzlocal==2.1
 urllib3==1.26.18
+
+qrcode~=8.0
