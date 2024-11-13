@@ -1480,6 +1480,10 @@ class Worker(threading.Thread):
             lang = "🇺🇦 Українська"
             keyboard.append([telegram.KeyboardButton(lang)])
             options[lang] = "uk"
+        if "vn" in self.cfg["Language"]["enabled_languages"]:
+            lang = "🇻🇳 Vietnamese"
+            keyboard.append([telegram.KeyboardButton(lang)])
+            options[lang] = "vn"
         if "zh_cn" in self.cfg["Language"]["enabled_languages"]:
             lang = "🇨🇳 简体中文"
             keyboard.append([telegram.KeyboardButton(lang)])
