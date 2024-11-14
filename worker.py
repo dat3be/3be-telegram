@@ -807,9 +807,6 @@ class Worker(threading.Thread):
             # Send him back to the previous menu
             return
 
-    import threading
-    import time
-
     def __add_credit_vietqr(self):
         """Generate a VietQR code for a predefined amount."""
         log.debug("Displaying __add_credit_vietqr")
@@ -824,7 +821,7 @@ class Worker(threading.Thread):
 
         # Generate the keyboard with converted amounts
         keyboard = [
-            [telegram.KeyboardButton(f"{preset} USD ({preset * usd_to_vnd_rate:,} VND)")]
+            [telegram.KeyboardButton(f"{preset}({preset * usd_to_vnd_rate:,} VND)")]
             for preset in presets
         ]
         keyboard.append([telegram.KeyboardButton(self.loc.get("menu_cancel"))])

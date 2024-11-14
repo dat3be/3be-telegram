@@ -130,6 +130,8 @@ menu_user_mode = "👤 Chuyển sang chế độ khách hàng"
 menu_csv = "📄 Xuất file .csv"
 menu_edit_admins = "🏵 Sửa Admin"
 menu_contact_shopkeeper = "👨‍💼 Liên hệ cửa hàng"
+menu_next = "▶️ Sau"
+menu_previous = "◀️ Trước"
 
 # Liên hệ quản lý cửa hàng
 contact_shopkeeper = "Hiện tại, đội ngũ hỗ trợ khách hàng bao gồm:\n" \
