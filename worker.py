@@ -821,12 +821,15 @@ class Worker(threading.Thread):
 
         # Generate the keyboard with converted amounts
         keyboard = [
-            [telegram.KeyboardButton(f"{preset}({preset * usd_to_vnd_rate:,} VND)")]
+            [telegram.KeyboardButton(f"{preset} USD ({preset * usd_to_vnd_rate:,} VND)")]
             for preset in presets
         ]
         keyboard.append([telegram.KeyboardButton(self.loc.get("menu_cancel"))])
 
         cancelled = False
+        value_usd = 0
+        value_vnd = 0
+
         while not cancelled:
             # Display the amount selection menu
             self.bot.send_message(
@@ -879,10 +882,12 @@ class Worker(threading.Thread):
         # Create a new transaction in the database
         transaction = db.Transaction(
             user_id=self.user.user_id,
-            value=value_vnd,
-            provider="VietQR",
-            notes="Generated through VietQR",
-            refunded=False
+            category="FUND",
+            type="VietQR",
+            status="Pending",
+            value=int(value_usd),  # Store value in USD
+            notes="Generated via VietQR",
+            provider="VietQR"
         )
         self.session.add(transaction)
         self.session.commit()
@@ -906,7 +911,7 @@ class Worker(threading.Thread):
                 qr_file,
                 caption=self.loc.get(
                     "vietqr_payment_caption",
-                    value=f"{value_usd:.2f} USD",
+                    value=f"{value_usd:.2f}",
                     value_vnd=f"{value_vnd:,} VND"
                 )
             )
@@ -919,25 +924,6 @@ class Worker(threading.Thread):
 
         # Delete the QR file after sending it
         os.remove(qr_path)
-
-        # Start the timeout thread to wait for payment
-        def timeout_transaction():
-            time.sleep(600)  # 10 minutes
-            transaction = self.session.query(db.Transaction).filter_by(
-                transaction_id=transaction.transaction_id,
-                refunded=False
-            ).first()
-            if transaction:
-                # If the transaction still exists and is not completed, cancel it
-                log.info(f"Transaction {transaction.transaction_id} timed out, canceling...")
-                self.session.delete(transaction)
-                self.session.commit()
-                self.bot.send_message(
-                    self.chat.id,
-                    self.loc.get("vietqr_payment_timeout", transaction_id=transaction.transaction_id)
-                )
-
-        threading.Thread(target=timeout_transaction, daemon=True).start()
 
         log.info(f"Generated VietQR for transaction {transaction.transaction_id}")
 

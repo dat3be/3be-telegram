@@ -3,7 +3,7 @@ import typing
 
 import requests
 import telegram
-from sqlalchemy import Column, ForeignKey, UniqueConstraint
+from sqlalchemy import Column, ForeignKey, UniqueConstraint, Enum
 from sqlalchemy import Integer, BigInteger, String, Text, LargeBinary, DateTime, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, backref
@@ -145,59 +145,34 @@ class Product(TableDeclarativeBase):
 
 
 class Transaction(TableDeclarativeBase):
-    """A 3be-telegram wallet transaction.
-    Wallet credit ISN'T calculated from these, but they can be used to recalculate it."""
-    # TODO: split this into multiple tables
+    """A 3be-telegram wallet transaction."""
 
-    # The internal transaction ID
-    transaction_id = Column(Integer, primary_key=True)
-    # The user whose credit is affected by this transaction
+    __tablename__ = "transactions"
+    __table_args__ = (UniqueConstraint("provider", "provider_charge_id"),)
+
+    transaction_id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(BigInteger, ForeignKey("users.user_id"), nullable=False)
     user = relationship("User", backref=backref("transactions"))
-    # The value of this transaction. Can be both negative and positive.
-    value = Column(Integer, nullable=False)
-    # Refunded status: if True, ignore the value of this transaction when recalculating
+
+    category = Column(Enum("FUND", "ORDER", name="transaction_category"), nullable=False)
+    type = Column(String, nullable=False)  # Use 'type' directly for both model and database
+    status = Column(Enum("Pending", "Completed", "Failed", "Expired", "Refunded", name="transaction_status"), default="Pending")
+    value = Column(Integer, nullable=False)  # Store the value in USD
     refunded = Column(Boolean, default=False)
-    # Extra notes on the transaction
     notes = Column(Text)
 
-    # Payment provider
     provider = Column(String)
-    # Transaction ID supplied by Telegram
     telegram_charge_id = Column(String)
-    # Transaction ID supplied by the payment provider
     provider_charge_id = Column(String)
-    # Extra transaction data, may be required by the payment provider in case of a dispute
     payment_name = Column(String)
     payment_phone = Column(String)
     payment_email = Column(String)
 
-    # Order ID
     order_id = Column(Integer, ForeignKey("orders.order_id"))
-    order = relationship("Order", back_populates="transaction")
-
-    # Extra table parameters
-    __tablename__ = "transactions"
-    __table_args__ = (UniqueConstraint("provider", "provider_charge_id"),)
-
-    def text(self, w: "worker.Worker"):
-        string = f"<b>T{self.transaction_id}</b> | {str(self.user)} | {w.Price(self.value)}"
-        if self.refunded:
-            string += f" | {w.loc.get('emoji_refunded')}"
-        if self.provider:
-            string += f" | {self.provider}"
-        if self.notes:
-            string += f" | {self.notes}"
-        if self.payment_name:
-            string += f" | {self.payment_name}"
-        if self.payment_phone:
-            string += f" | +{self.payment_phone}"
-        if self.payment_email:
-            string += f" | {self.payment_email}"
-        return string
+    order = relationship("Order", back_populates="transaction", uselist=False)
 
     def __repr__(self):
-        return f"<Transaction {self.transaction_id} for User {self.user_id}>"
+        return f"<Transaction {self.transaction_id} ({self.category} - {self.type}) for User {self.user_id}>"
 
 
 class Admin(TableDeclarativeBase):
