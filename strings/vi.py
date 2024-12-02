@@ -141,12 +141,24 @@ contact_shopkeeper = "Hiện tại, đội ngũ hỗ trợ khách hàng bao gồ
 # Chọn ngôn ngữ
 conversation_language_select = "Chọn một ngôn ngữ:"
 
-# Prompt to enter the amount for VietQR payment
-payment_vietqr_amount = "Chọn số tiền để thanh toán qua VietQR:"
-vietqr_payment_caption = "Quét mã QR này để thanh toán {value} USD ({value_vnd})."
-vietqr_payment_timeout = "Phiên thanh toán của bạn với mã giao dịch {transaction_id} đã hết hạn. Vui lòng thử lại."
-vietqr_payment_timeout_warning = "Bạn có 10 phút để hoàn tất thanh toán với mã giao dịch {transaction_id}. Nếu không thanh toán trong thời gian này, giao dịch sẽ bị hủy."
-error_vietqr_generation_failed = "Không thể tạo mã VietQR. Vui lòng thử lại."
+# Prompts and messages for VietQR payments
+payment_vietqr_amount = "Chọn một số tiền cho thanh toán VietQR:"
+vietqr_payment_pending = "Đang chờ xác nhận thanh toán VietQR (Mã giao dịch: {transaction_id}). Vui lòng đợi..."
+vietqr_payment_caption = "Quét mã QR để thanh toán ({value_vnd} VND)."
+vietqr_payment_timeout_warning = "Hoàn tất thanh toán cho giao dịch {transaction_id} trong vòng 10 phút để tránh bị hủy."
+vietqr_payment_timeout = "Phiên thanh toán cho giao dịch {transaction_id} đã hết hạn. Vui lòng bắt đầu giao dịch mới."
+vietqr_payment_success = "✅ Thanh toán thành công! Số dư trong ví đã được cập nhật."
+vietqr_payment_failed = "❌ Thanh toán VietQR với mã giao dịch: {transaction_id} thất bại. Vui lòng thử lại."
+
+# Error messages
+error_vietqr_config = "Cấu hình VietQR bị thiếu hoặc không chính xác. Vui lòng liên hệ bộ phận hỗ trợ."
+error_invalid_amount = "Số tiền nhập vào không hợp lệ. Vui lòng thử lại."
+error_invalid_payment_amount = "Số tiền phải nằm trong khoảng từ {min_amount} đến {max_amount} VND."
+error_vietqr_generation_failed = "Không thể tạo mã QR VietQR. Vui lòng thử lại."
+menu_cancelled = "Đã hủy tác vụ thành công."
+
+# General error messages
+fatal_conversation_exception = "Đã xảy ra lỗi. Vui lòng liên hệ bộ phận hỗ trợ."
 
 # Thanh toán: số tiền thẻ tín dụng
 payment_cc_amount = "Bạn muốn thêm bao nhiêu tiền vào ví của mình?\n" \

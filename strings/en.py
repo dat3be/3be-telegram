@@ -318,12 +318,24 @@ payment_cash = "You can pay in cash at the physical location of the store.\n" \
                "Pay at checkout, and give this id to the manager:\n" \
                "<b>{user_cash_id}</b>"
 
-# Prompt to enter the amount for VietQR payment
-payment_vietqr_amount = "Select the amount to pay via VietQR:"
-vietqr_payment_caption = "Scan this QR code to pay {value} USD ({value_vnd})."
-vietqr_payment_timeout_warning = "You have 10 minutes to complete the payment for transaction {transaction_id}. If not paid within this time, the transaction will be canceled."
-vietqr_payment_timeout = "Your payment session for transaction {transaction_id} has timed out. Please try again."
-error_vietqr_generation_failed = "Failed to generate the VietQR code. Please try again."
+# Prompts and messages for VietQR payments
+payment_vietqr_amount = "Choose an amount for VietQR payment:"
+vietqr_payment_pending = "Waiting for confirmation of VietQR payment (Transaction ID: {transaction_id}). Please wait..."
+vietqr_payment_caption = "Scan the QR code to pay ({value_vnd} VND)."
+vietqr_payment_timeout_warning = "Complete the payment for transaction {transaction_id} within 10 minutes to avoid cancellation."
+vietqr_payment_timeout = "Payment session for transaction {transaction_id} has expired. Please initiate a new transaction."
+vietqr_payment_success = "✅ Payment successful! Your balance was updated."
+vietqr_payment_failed = "❌ VietQR payment for transaction ID: {transaction_id} failed. Please try again."
+
+# Error messages
+error_vietqr_config = "VietQR configuration is missing or incorrect. Please contact support."
+error_invalid_amount = "The entered amount is invalid. Please try again."
+error_invalid_payment_amount = "The amount must be between {min_amount} and {max_amount} VND."
+error_vietqr_generation_failed = "Unable to generate the VietQR code. Please try again."
+menu_cancelled = "The operation was cancelled successfully."
+
+# General error messages
+fatal_conversation_exception = "An unexpected error occurred. Please contact support."
 
 # Payment: invoice amount
 payment_cc_amount = "How many funds do you want to add to your wallet?\n" \

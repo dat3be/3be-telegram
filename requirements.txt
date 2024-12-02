@@ -19,3 +19,5 @@ tzlocal==2.1
 urllib3==1.26.18
 
 qrcode~=8.0
+flask~=3.1.0
+werkzeug~=3.1.3

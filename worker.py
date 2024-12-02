@@ -808,10 +808,12 @@ class Worker(threading.Thread):
             return
 
     def __add_credit_vietqr(self):
-        """Generate a VietQR code for a predefined amount."""
+        """
+        Generate a VietQR code for a predefined amount and process payment.
+        """
         log.debug("Displaying __add_credit_vietqr")
 
-        # Get presets and conversion rate from config
+        # Get presets and conversion rate from the config
         presets = self.cfg["Payments"]["VietQR"].get("payment_presets", [])
         usd_to_vnd_rate = self.cfg["Payments"]["VietQR"].get("usd_to_vnd_rate", 25000)
 
@@ -826,12 +828,10 @@ class Worker(threading.Thread):
         ]
         keyboard.append([telegram.KeyboardButton(self.loc.get("menu_cancel"))])
 
-        cancelled = False
-        value_usd = 0
-        value_vnd = 0
+        value_usd, value_vnd = 0, 0
 
-        while not cancelled:
-            # Display the amount selection menu
+        # Prompt the user to select an amount
+        while True:
             self.bot.send_message(
                 self.chat.id,
                 self.loc.get("payment_vietqr_amount"),
@@ -842,11 +842,11 @@ class Worker(threading.Thread):
             selection = self.__wait_for_regex(r"([0-9]+(?:[.,][0-9]+)?)", cancellable=True)
 
             if isinstance(selection, CancelSignal):
-                # Exit the loop if cancelled
-                cancelled = True
-                continue
+                # If cancelled, return to the previous menu
+                self.bot.send_message(self.chat.id, self.loc.get("menu_cancelled"))
+                return
 
-            # Validate the amount
+            # Validate the selected amount
             try:
                 value_usd = float(selection.split()[0])
                 value_vnd = int(value_usd * usd_to_vnd_rate)
@@ -854,30 +854,25 @@ class Worker(threading.Thread):
                 self.bot.send_message(self.chat.id, self.loc.get("error_invalid_amount"))
                 continue
 
-            # Ensure the selected amount is valid
+            # Ensure the selected amount is within valid limits
             if value_vnd > self.cfg["Payments"]["VietQR"]["max_amount"]:
                 self.bot.send_message(
                     self.chat.id,
                     self.loc.get(
-                        "error_payment_amount_over_max",
+                        "error_invalid_payment_amount",
                         max_amount=f"{self.cfg['Payments']['VietQR']['max_amount']:,} VND"
                     )
                 )
-                continue
             elif value_vnd < self.cfg["Payments"]["VietQR"]["min_amount"]:
                 self.bot.send_message(
                     self.chat.id,
                     self.loc.get(
-                        "error_payment_amount_under_min",
+                        "error_invalid_payment_amount",
                         min_amount=f"{self.cfg['Payments']['VietQR']['min_amount']:,} VND"
                     )
                 )
-                continue
-            break
-
-        # If the user cancelled the action...
-        if cancelled:
-            return
+            else:
+                break
 
         # Create a new transaction in the database
         transaction = db.Transaction(
@@ -892,95 +887,236 @@ class Worker(threading.Thread):
         self.session.add(transaction)
         self.session.commit()
 
-        # Generate VietQR content and image
-        try:
-            qr_content = self.__generate_vietqr_content(value_vnd, transaction.transaction_id)
-            qr_path = self.__generate_vietqr_image(qr_content)
-        except ValueError as e:
-            log.error(f"Failed to generate VietQR: {e}")
-            self.bot.send_message(self.chat.id, self.loc.get("error_vietqr_generation_failed"))
-            # Roll back the transaction if QR generation fails
-            self.session.delete(transaction)
-            self.session.commit()
-            return
+        # Process the VietQR transaction
+        success = self.__process_vietqr_transaction(value_vnd, transaction)
 
-        # Send the QR code to the user
-        with open(qr_path, "rb") as qr_file:
-            self.bot.send_photo(
+        if success:
+            # Notify the user of a successful payment
+            self.bot.send_message(
                 self.chat.id,
-                qr_file,
-                caption=self.loc.get(
-                    "vietqr_payment_caption",
-                    value=f"{value_usd:.2f}",
-                    value_vnd=f"{value_vnd:,} VND"
-                )
+                self.loc.get("vietqr_payment_success", transaction_id=transaction.transaction_id)
             )
+            log.info(f"VietQR payment completed for transaction {transaction.transaction_id}")
+        else:
+            # Notify the user of a failed payment
+            self.bot.send_message(
+                self.chat.id,
+                self.loc.get("vietqr_payment_failed", transaction_id=transaction.transaction_id)
+            )
+            log.warning(f"VietQR payment failed for transaction {transaction.transaction_id}")
 
-        # Notify the user of the timeout window
-        self.bot.send_message(
-            self.chat.id,
-            self.loc.get("vietqr_payment_timeout_warning", transaction_id=transaction.transaction_id)
-        )
+    def __process_vietqr_transaction(self, amount_vnd, transaction):
+        """
+        Process the VietQR transaction:
+        1. Generate the VietQR URL and image.
+        2. Send the QR code to the user.
+        3. Wait for webhook confirmation.
+        """
+        log.info(
+            f"Starting VietQR transaction process for ID: {transaction.transaction_id}, Amount: {amount_vnd:,} VND")
+        qr_path = None
 
-        # Delete the QR file after sending it
-        os.remove(qr_path)
-
-        log.info(f"Generated VietQR for transaction {transaction.transaction_id}")
-
-    def __wait_for_payment_confirmation(self, transaction):
-        """Wait for payment confirmation for a specific transaction."""
-        # Example implementation: webhook or manual confirmation process
-        log.info(f"Waiting for payment confirmation for transaction ID {transaction.transaction_id}")
-        # Add your webhook or polling logic here
-        pass
-
-    def __generate_vietqr_content(self, amount_vnd, transaction_id):
-        """Generate the VietQR content URL with a custom description."""
-        config = self.cfg["Payments"]["VietQR"]
-
-        # Validate required configuration fields
-        required_keys = ["bank_code", "account_number", "account_name"]
-        missing_keys = [key for key in required_keys if key not in config]
-        if missing_keys:
-            raise KeyError(f"Missing required VietQR configuration keys: {', '.join(missing_keys)}")
-
-        if amount_vnd <= 0:
-            raise ValueError("Invalid amount for VietQR payment: Amount must be greater than 0")
-
-        # Format the custom description
-        custom_description = f"3BE chuc mung {transaction_id}"
-        add_info = urllib.parse.quote(custom_description)
-
-        # URL encode account name
-        account_name = urllib.parse.quote(config["account_name"])
-
-        # Construct the URL
-        qr_url = (
-            f"https://img.vietqr.io/image/{config['bank_code']}-{config['account_number']}-compact.png"
-            f"?accountName={account_name}"
-            f"&amount={amount_vnd}"
-            f"&addInfo={add_info}"
-        )
-
-        log.debug(f"Generated VietQR URL with transaction ID {transaction_id}: {qr_url}")
-        return qr_url
-
-    def __generate_vietqr_image(self, qr_content):
-        """Fetch and save the QR code image from the generated VietQR URL."""
         try:
-            log.debug(f"Fetching VietQR image from: {qr_content}")
-            response = requests.get(qr_content, stream=True)
+            # Step 1: Generate the VietQR URL
+            qr_url = self.__generate_vietqr_url(amount_vnd, transaction.transaction_id)
+
+            # Step 2: Fetch and save the QR code image temporarily
+            qr_path = self.__fetch_vietqr_image(qr_url)
+
+            # Step 3: Send the QR code to the user
+            self.__send_vietqr_to_user(qr_path, amount_vnd, transaction)
+
+            # Step 4: Wait for webhook confirmation
+            if self.__wait_for_webhook_confirmation(transaction):
+                log.info(f"Transaction {transaction.transaction_id} confirmed successfully.")
+                return True
+            else:
+                log.warning(f"Transaction {transaction.transaction_id} timed out waiting for confirmation.")
+                raise TimeoutError("Webhook confirmation timed out.")
+
+        except Exception as e:
+            log.exception(f"Error processing VietQR transaction {transaction.transaction_id}: {e}")
+            self.bot.send_message(
+                self.chat.id,
+                self.loc.get("vietqr_payment_failed", transaction_id=transaction.transaction_id)
+            )
+            return False
+        finally:
+            # Clean up the QR code image after the transaction is completed
+            if qr_path and os.path.exists(qr_path):
+                os.remove(qr_path)
+                log.info(f"Temporary QR code image deleted: {qr_path}")
+
+    def __fetch_vietqr_image(self, qr_url):
+        """
+        Fetch and save the QR code image temporarily on the server.
+
+        Args:
+            qr_url (str): The URL of the QR code image.
+
+        Returns:
+            str: The path to the saved QR code image.
+        """
+        try:
+            log.debug(f"Fetching VietQR image from URL: {qr_url}")
+            response = requests.get(qr_url, stream=True)
             response.raise_for_status()
 
-            qr_path = f"vietqr_{uuid.uuid4().hex}.png"
+            # Save the image with a unique name
+            qr_path = f"temp_vietqr_{uuid.uuid4().hex}.png"
             with open(qr_path, "wb") as qr_file:
                 for chunk in response.iter_content(1024):
                     qr_file.write(chunk)
 
+            log.info(f"VietQR image saved temporarily at: {qr_path}")
             return qr_path
         except requests.RequestException as e:
-            log.error(f"Failed to fetch VietQR image: {e} | Status Code: {getattr(e.response, 'status_code', 'N/A')}")
-            raise ValueError("Failed to generate VietQR image")
+            log.error(f"Failed to fetch VietQR image from {qr_url}: {e}")
+            raise ValueError("Failed to fetch VietQR image")
+
+    def __send_vietqr_to_user(self, qr_path, amount_vnd, transaction):
+        """
+        Send the QR code image to the user with a caption.
+        """
+        try:
+            # Format amount with thousand separators
+            formatted_amount = f"{amount_vnd:,}"  # Use comma as a thousand separator
+
+            with open(qr_path, "rb") as qr_file:
+                self.bot.send_photo(
+                    self.chat.id,
+                    qr_file,
+                    caption=self.loc.get(
+                        "vietqr_payment_caption",
+                        value_vnd=f"{formatted_amount} VND",
+                        transaction_id=transaction.transaction_id
+                    )
+                )
+            self.bot.send_message(
+                self.chat.id,
+                self.loc.get("vietqr_payment_pending", transaction_id=transaction.transaction_id)
+            )
+            log.info(f"Sent VietQR to user for transaction ID: {transaction.transaction_id}")
+        except Exception as e:
+            log.error(f"Failed to send VietQR to user for transaction ID {transaction.transaction_id}: {e}")
+            raise
+
+    def __wait_for_webhook_confirmation(self, transaction):
+        """
+        Polls the database for webhook confirmation of the transaction.
+        Updates the user's balance in USD if the transaction is confirmed.
+
+        Args:
+            transaction (Transaction): The transaction to confirm.
+
+        Returns:
+            bool: True if the transaction was successfully confirmed, False otherwise.
+        """
+        log.info(f"Waiting for webhook confirmation for transaction ID: {transaction.transaction_id}")
+        polling_interval = 5  # Polling interval in seconds
+        max_attempts = 30  # Maximum polling attempts
+        usd_to_vnd_rate = self.cfg["Payments"]["VietQR"].get("usd_to_vnd_rate", 25000)
+
+        for attempt in range(max_attempts):
+            try:
+                log.debug(f"Polling attempt {attempt + 1} for transaction {transaction.transaction_id}")
+
+                # Fetch the updated transaction status
+                self.session.refresh(transaction)
+
+                # Stop polling if transaction is already completed
+                if transaction.status == "Completed":
+                    log.info(f"Webhook confirmed transaction {transaction.transaction_id} as Completed.")
+
+                    # Fetch and refresh the associated user
+                    user = self.session.query(db.User).filter_by(user_id=transaction.user_id).one_or_none()
+
+                    if user:
+                        # Convert the value to USD and update balances
+                        if transaction.value < usd_to_vnd_rate:  # Check if value is still in VND
+                            value_in_usd = round(transaction.value / usd_to_vnd_rate, 2)
+                            transaction.value = value_in_usd
+                            user.credit += value_in_usd
+                            self.session.commit()
+
+                            log.info(
+                                f"Transaction {transaction.transaction_id} processed: "
+                                f"{value_in_usd:.2f} USD credited to user {user.user_id} "
+                                f"(New balance: {user.credit:.2f} USD)."
+                            )
+
+                            # Notify the user of the successful transaction
+                            self._send_transaction_notification(user, transaction, value_in_usd)
+                    return True  # End polling as the transaction is confirmed
+
+                # Continue polling if transaction is still pending
+                log.debug(
+                    f"Transaction {transaction.transaction_id} not confirmed. Retrying in {polling_interval} seconds.")
+                time.sleep(polling_interval)
+
+            except Exception as e:
+                log.error(f"Error during webhook polling for transaction {transaction.transaction_id}: {e}")
+
+        # Log timeout if confirmation is not received within the maximum attempts
+        log.warning(f"Transaction {transaction.transaction_id} polling session timed out.")
+        return False
+
+    def _send_transaction_notification(self, user, transaction, value_in_usd):
+        """
+        Notify the user about the transaction via Telegram.
+
+        Args:
+            user (User): The user object to notify.
+            transaction (Transaction): The confirmed transaction object.
+            value_in_usd (float): The transaction value in USD.
+        """
+        try:
+            # Use localized message for notification
+            message = self.loc.get(
+                "vietqr_payment_success",
+                transaction_id=transaction.transaction_id,
+                value_usd=value_in_usd,
+                user_credit=user.credit
+            )
+
+            # Send the localized message to the user
+            self.bot.send_message(user.user_id, message)
+
+            log.info(f"Notification sent to user {user.user_id} for transaction {transaction.transaction_id}.")
+        except Exception as e:
+            log.error(
+                f"Failed to send notification to user {user.user_id} for transaction {transaction.transaction_id}: {e}"
+            )
+
+    def __generate_vietqr_url(self, amount_vnd, transaction_id):
+        """
+        Generates a VietQR URL for the transaction.
+
+        Args:
+            amount_vnd (int): The transaction amount in VND.
+            transaction_id (str): The transaction ID.
+
+        Returns:
+            str: The URL of the generated VietQR code.
+        """
+        config = self.cfg["Payments"]["VietQR"]
+
+        # Validate the required configuration keys
+        required_keys = ["bank_code", "account_number", "account_name"]
+        if any(key not in config for key in required_keys):
+            raise KeyError("Missing required VietQR configuration keys.")
+
+        if amount_vnd <= 0:
+            raise ValueError("Amount must be greater than 0")
+
+        # Construct the QR URL
+        add_info = urllib.parse.quote(f"3BE chuc mung {transaction_id}")
+        account_name = urllib.parse.quote(config["account_name"])
+
+        return (
+            f"https://img.vietqr.io/image/{config['bank_code']}-{config['account_number']}-compact.png"
+            f"?accountName={account_name}&amount={amount_vnd}&addInfo={add_info}"
+        )
 
     def __add_credit_cc(self):
         """Add money to the wallet through a credit card payment."""
